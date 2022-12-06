@@ -21,7 +21,7 @@ from django.views import View
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from saml2 import BINDING_HTTP_POST, BINDING_HTTP_REDIRECT
+from saml2 import BINDING_HTTP_POST, BINDING_HTTP_REDIRECT, BINDING_SOAP
 from saml2.authn_context import PASSWORD, AuthnBroker, authn_context_class_ref
 from saml2.ident import NameID
 from saml2.saml import NAMEID_FORMAT_UNSPECIFIED
@@ -377,27 +377,27 @@ class LogoutProcessView(LoginRequiredMixin, IdPHandlerViewMixin, View):
 
         resp = idp_server.create_logout_response(req_info.message, [binding])
 
-        '''
+        
         # TODO: SOAP
-        # if binding == BINDING_SOAP:
-            # destination = ""
-            # response = False
-        # else:
-            # binding, destination = IDP.pick_binding(
-                # "single_logout_service", [binding], "spsso", req_info
-            # )
-            # response = True
-        # END TODO SOAP'''
+        if binding == BINDING_SOAP:
+            destination = ""
+            response = False
+        else:
+            binding, destination = idp_server.pick_binding(
+                "single_logout_service", [binding], "spsso", req_info
+            )
+            response = True
+        # END TODO SOAP
 
         try:
             # hinfo returns request or response, it depends by request arg
-            hinfo = idp_server.apply_binding(binding, resp.__str__(), resp.destination, relay_state, response=True)
+            hinfo = idp_server.apply_binding(binding, resp, destination, relay_state, response=True)
         except Exception as excp:
             logger.error("ServiceError: %s", excp)
             return error_cbv.handle_error(request, exception=excp, status=400)
 
         logger.debug("--- {} Response [\n{}] ---".format(self.__service_name, repr_saml(resp.__str__().encode())))
-        logger.debug("--- binding: {} destination:{} relay_state:{} ---".format(binding, resp.destination, relay_state))
+        logger.debug("--- binding: {} destination:{} relay_state:{} ---".format(binding, req_info.message.destination, relay_state))
 
         # TODO: double check username session and saml login request
         # logout user from IDP
@@ -410,7 +410,7 @@ class LogoutProcessView(LoginRequiredMixin, IdPHandlerViewMixin, View):
                 request,
                 binding=binding,
                 authn_resp=resp.__str__(),
-                destination=resp.destination,
+                destination=destination,
                 relay_state=relay_state)
         return self.render_response(request, html_response, None)
 
